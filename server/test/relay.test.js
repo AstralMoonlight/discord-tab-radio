@@ -128,3 +128,73 @@ test('Relay: saludo, token invalido, paquetes binarios y cierre', async () => {
   wss.close();
   server.close();
 });
+
+test('Relay: un motivo de cierre largo y no ASCII no tumba el proceso', async () => {
+  const name = 'あ'.repeat(32);
+  const busyMsg = `Ya hay una transmision en este servidor (de ${name})`;
+  const endMsg = `Detenido por ${'😀'.repeat(32)} con /salir`;
+  let onEnd;
+  const tokens = { resolve: () => 'user1' };
+  const sessions = {
+    count: 0,
+    async start(opts) {
+      if (!onEnd) {
+        onEnd = opts.onEnd;
+        return { guild: { name: 'g' }, channel: { name: 'c' }, pushPacket() {}, destroy() {} };
+      }
+      throw new Error(busyMsg);
+    },
+  };
+  const { server, wss } = startRelay({ port: 0, tokens, sessions });
+  await once(server, 'listening');
+  const hello = async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/stream`);
+    await once(ws, 'open');
+    ws.send(JSON.stringify({ type: 'hello', token: 'x', v: 1 }));
+    const [msg] = await once(ws, 'message');
+    return { ws, msg: JSON.parse(msg.toString()) };
+  };
+  const checkClose = async (ws, code, full) => {
+    const [gotCode, reason] = await once(ws, 'close', { signal: AbortSignal.timeout(2000) });
+    assert.equal(gotCode, code);
+    assert.ok(reason.length > 100 && reason.length <= 123, `motivo de ${reason.length} bytes`);
+    assert.ok(full.startsWith(reason.toString()), 'no corta un caracter por la mitad');
+  };
+
+  try {
+    const live = await hello();
+    assert.equal(live.msg.type, 'ready');
+
+    // Cierre por error: el mensaje llega completo, solo se recorta el motivo del cierre
+    const busy = await hello();
+    assert.equal(busy.msg.message, busyMsg);
+    await checkClose(busy.ws, 4003, busyMsg);
+
+    // Cierre normal (por ejemplo /salir)
+    const closed = checkClose(live.ws, 1000, endMsg);
+    onEnd(endMsg);
+    await closed;
+  } finally {
+    for (const ws of wss.clients) ws.terminate();
+    wss.close();
+    server.close();
+  }
+});
+
+test('Relay: un mensaje de texto invalido cierra la conexion sin tumbar el proceso', async () => {
+  const { server, wss } = startRelay({ port: 0, tokens: { resolve: () => null }, sessions: { count: 0 } });
+  await once(server, 'listening');
+  try {
+    for (const bad of ['null', '42', '"hola"', '[]', '{}', '{"type":null}', '', '{no es json']) {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/stream`);
+      await once(ws, 'open');
+      ws.send(bad);
+      const [code] = await once(ws, 'close', { signal: AbortSignal.timeout(2000) });
+      assert.equal(code, 4002, `mensaje: ${bad}`);
+    }
+  } finally {
+    for (const ws of wss.clients) ws.terminate();
+    wss.close();
+    server.close();
+  }
+});

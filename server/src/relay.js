@@ -3,6 +3,13 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { log } from './log.js';
 
 const PROTOCOL_VERSION = 1;
+const MAX_CLOSE_REASON_BYTES = 123; // limite del protocolo WebSocket; ws lanza una excepcion si se pasa
+
+/** Recorta el motivo de cierre por bytes, sin partir un caracter por la mitad. */
+function closeReason(text) {
+  const buf = new Uint8Array(MAX_CLOSE_REASON_BYTES);
+  return buf.subarray(0, new TextEncoder().encodeInto(text, buf).written);
+}
 
 /**
  * Servidor WebSocket que recibe el audio de la extension.
@@ -40,7 +47,7 @@ export function startRelay({ port, tokens, sessions }) {
     };
     const fail = (code, message) => {
       send({ type: 'error', message });
-      ws.close(code, message.slice(0, 120));
+      ws.close(code, closeReason(message));
     };
 
     const helloTimer = setTimeout(() => fail(4000, 'No llego el saludo inicial'), 10_000);
@@ -54,7 +61,9 @@ export function startRelay({ port, tokens, sessions }) {
       let msg;
       try {
         msg = JSON.parse(data.toString());
-      } catch {
+      } catch {}
+      // JSON valido no basta: "null" o un numero tambien lo son y vienen de alguien sin autenticar
+      if (typeof msg?.type !== 'string') {
         fail(4002, 'Mensaje invalido');
         return;
       }
@@ -79,7 +88,7 @@ export function startRelay({ port, tokens, sessions }) {
             userId,
             onEnd: (reason) => {
               send({ type: 'ended', message: reason });
-              if (ws.readyState === WebSocket.OPEN) ws.close(1000, reason.slice(0, 120));
+              if (ws.readyState === WebSocket.OPEN) ws.close(1000, closeReason(reason));
             },
           });
           if (closed) {
