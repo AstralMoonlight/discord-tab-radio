@@ -1,0 +1,21 @@
+{
+  "name": "tab-radio-server",
+  "version": "0.1.0",
+  "description": "Bot de Discord que transmite al canal de voz el audio de una pestana del navegador",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/config.js && node --check src/tokens.js && node --check src/sessions.js && node --check src/relay.js && node --check src/log.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.28.1",
+    "ws": "^8.23.0"
+  }
+}

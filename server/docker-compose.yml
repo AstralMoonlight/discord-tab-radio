@@ -1,0 +1,17 @@
+services:
+  tab-radio:
+    build: .
+    container_name: tab-radio
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    ports:
+      # Si usas un reverse proxy en el mismo host, puedes dejarlo solo en local:
+      # - "127.0.0.1:8790:8790"
+      - "8790:8790"
+    volumes:
+      - tab-radio-data:/data
+
+volumes:
+  tab-radio-data:

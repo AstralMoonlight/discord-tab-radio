@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tab Radio</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #1e1f22;
+        --panel: #2b2d31;
+        --text: #dbdee1;
+        --muted: #949ba4;
+        --accent: #5865f2;
+        --live: #23a55a;
+        --danger: #da373c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 320px;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.4 system-ui, sans-serif;
+      }
+      h1 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+      .dot.live { background: var(--live); box-shadow: 0 0 6px var(--live); }
+      .dot.error { background: var(--danger); }
+      label { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; margin: 10px 0 4px; }
+      input[type='text'], input[type='password'] {
+        width: 100%;
+        padding: 7px 8px;
+        border: 1px solid #3f4147;
+        border-radius: 4px;
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+      }
+      .check { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--text); text-transform: none; font-size: 13px; }
+      button {
+        width: 100%;
+        margin-top: 14px;
+        padding: 9px;
+        border: 0;
+        border-radius: 4px;
+        background: var(--accent);
+        color: white;
+        font: 600 13px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      button.stop { background: var(--danger); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      #status { margin-top: 10px; min-height: 18px; color: var(--muted); }
+      #status.error { color: #f38688; }
+      details { margin-top: 6px; }
+      summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1><span id="dot" class="dot"></span>Tab Radio</h1>
+
+    <details id="config">
+      <summary>Configuracion</summary>
+      <label for="server">Servidor</label>
+      <input id="server" type="text" placeholder="wss://radio.tudominio.cl/stream" spellcheck="false" />
+      <label for="token">Token (usa /vincular en Discord)</label>
+      <input id="token" type="password" spellcheck="false" />
+    </details>
+
+    <label class="check"><input id="listen" type="checkbox" /> Escucharla tambien en este PC</label>
+
+    <button id="toggle">Transmitir esta pestana</button>
+    <div id="status"></div>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
