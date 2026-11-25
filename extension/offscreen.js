@@ -2,14 +2,12 @@
 // (paquetes de 20 ms, 48 kHz, estereo, igual que Discord) y lo manda al servidor.
 // Aqui solo existe chrome.runtime, asi que el estado se informa al service worker.
 
-const SAMPLE_RATE = 48000;
-const FRAMES = 960; // 20 ms
 const PROTOCOL_VERSION = 1;
 const MAX_WS_BACKLOG = 256 * 1024; // si la red no da abasto, se descarta audio en vez de acumular retraso
 
 const OPUS_CONFIG = {
   codec: 'opus',
-  sampleRate: SAMPLE_RATE,
+  sampleRate: 48000,
   numberOfChannels: 2,
   bitrate: 96000,
   opus: {
@@ -52,25 +50,12 @@ async function start({ streamId, server, token, listen }) {
     const support = await AudioEncoder.isConfigSupported(OPUS_CONFIG);
     if (!support.supported) throw new Error('Este navegador no puede codificar Opus con WebCodecs');
 
-    // 2. Grafo de audio a 48 kHz (el AudioContext remuestrea si la pestana viene a otra frecuencia)
-    c.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
-    if (c.ctx.state === 'suspended') await c.ctx.resume().catch(() => {});
-    await c.ctx.audioWorklet.addModule('capture-worklet.js');
-    const source = c.ctx.createMediaStreamSource(c.media);
-    const capture = new AudioWorkletNode(c.ctx, 'capture-processor', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [1],
-      channelCount: 2,
-      channelCountMode: 'explicit',
-      channelInterpretation: 'speakers',
-    });
-    // El worklet tiene que estar conectado a la salida para que Chrome lo procese; va con volumen 0
-    const sink = c.ctx.createGain();
-    sink.gain.value = 0;
-    source.connect(capture).connect(sink).connect(c.ctx.destination);
-    // Al capturar, Chrome silencia la pestana; si se pide, se reproduce tambien aqui
-    if (listen) source.connect(c.ctx.destination);
+    // 2. Al capturar, Chrome silencia la pestana; si se pide, se reproduce tambien aqui
+    if (listen) {
+      c.ctx = new AudioContext();
+      if (c.ctx.state === 'suspended') await c.ctx.resume().catch(() => {});
+      c.ctx.createMediaStreamSource(c.media).connect(c.ctx.destination);
+    }
 
     // 3. Codificador Opus
     c.encoder = new AudioEncoder({
@@ -86,26 +71,7 @@ async function start({ streamId, server, token, listen }) {
       },
       error: (err) => stop('Error del codificador: ' + err.message, 'error'),
     });
-    c.encoder.configure(OPUS_CONFIG);
-
-    let timestamp = 0;
-    capture.port.onmessage = ({ data }) => {
-      if (c.stopped || c.encoder.state !== 'configured') return;
-      const planar = new Float32Array(FRAMES * 2);
-      planar.set(data.left, 0);
-      planar.set(data.right, FRAMES);
-      const audio = new AudioData({
-        format: 'f32-planar',
-        sampleRate: SAMPLE_RATE,
-        numberOfFrames: FRAMES,
-        numberOfChannels: 2,
-        timestamp,
-        data: planar,
-      });
-      timestamp += 20000;
-      c.encoder.encode(audio);
-      audio.close();
-    };
+    pump(c).catch((err) => stop('Error al leer el audio: ' + err.message, 'error'));
 
     // 4. Conexion con el servidor
     report('connecting', 'Conectando con el servidor...');
@@ -138,6 +104,30 @@ async function start({ streamId, server, token, listen }) {
     };
   } catch (err) {
     stop('No se pudo iniciar: ' + err.message, 'error');
+  }
+}
+
+/**
+ * Pasa el audio capturado al codificador, que lo corta en paquetes de 20 ms.
+ * Se lee directo de la pista y no con un AudioWorklet: un AudioContext sin sonido
+ * audible lo mueve un temporizador que Windows frena cuando Chrome pierde el foco,
+ * y solo llegaban 2 de cada 3 paquetes.
+ */
+async function pump(c) {
+  const track = c.media.getAudioTracks()[0];
+  const reader = new MediaStreamTrackProcessor({ track, maxBufferSize: 100 }).readable.getReader();
+  let config = {};
+  while (true) {
+    const { value: audio, done } = await reader.read();
+    if (done) return;
+    if (c.stopped) return audio.close();
+    const { sampleRate, numberOfChannels } = audio;
+    if (sampleRate !== config.sampleRate || numberOfChannels !== config.numberOfChannels) {
+      config = { ...OPUS_CONFIG, sampleRate, numberOfChannels };
+      c.encoder.configure(config);
+    }
+    c.encoder.encode(audio);
+    audio.close();
   }
 }
 

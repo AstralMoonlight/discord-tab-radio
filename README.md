@@ -118,7 +118,7 @@ Mientras transmites, Chrome silencia la pestana en tu PC. Lo normal es escucharl
 ## Como funciona por dentro
 
 - La extension pide permiso para la pestana con `chrome.tabCapture` y abre un documento *offscreen* que mantiene la captura aunque cierres el popup.
-- Un `AudioWorklet` corta el audio en bloques de 20 ms a 48 kHz estereo y `WebCodecs` los codifica a Opus a 96 kbps, exactamente el formato que usa Discord.
+- `WebCodecs` codifica el audio capturado a Opus a 96 kbps en paquetes de 20 ms, exactamente el formato que usa Discord. El audio se lee directo de la pista (`MediaStreamTrackProcessor`), porque un `AudioWorklet` se frena cuando Chrome pierde el foco.
 - Cada paquete se manda como un mensaje binario por WebSocket. El servidor no decodifica ni recodifica nada: mete los paquetes directo al reproductor de voz.
 - En el servidor hay un buffer pequeno: si la red entrega rafagas, descarta audio viejo para que el retraso no crezca; si hay un hueco, manda silencio en vez de cortar.
 - Los tokens se guardan solo como hash SHA-256 en `data/tokens.json`.
